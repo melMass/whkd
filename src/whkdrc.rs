@@ -19,6 +19,7 @@ pub enum Shell {
     Cmd,
     Powershell,
     Pwsh,
+    Nushell,
 }
 
 #[allow(clippy::fallible_impl_from)]
@@ -28,6 +29,7 @@ impl From<String> for Shell {
             "pwsh" => Self::Pwsh,
             "powershell" => Self::Powershell,
             "cmd" => Self::Cmd,
+            "nu" => Self::Nushell,
             _ => panic!("unsupported shell"),
         }
     }
@@ -39,6 +41,7 @@ impl Display for Shell {
             Self::Cmd => write!(f, "cmd"),
             Self::Powershell => write!(f, "powershell"),
             Self::Pwsh => write!(f, "pwsh"),
+            Self::Nushell => write!(f, "nu"),
         }
     }
 }

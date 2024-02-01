@@ -27,7 +27,7 @@ mod whkdrc;
 lazy_static! {
     static ref WHKDRC: Whkdrc = {
         // config file defaults to `~/.config/whkdrc`, or `<WHKD_CONFIG_HOME>/whkdrc`
-        let mut home  = std::env::var("WHKD_CONFIG_HOME").map_or_else(
+        let mut home = std::env::var("WHKD_CONFIG_HOME").map_or_else(
             |_| dirs::home_dir().expect("no home directory found").join(".config"),
             |home_path| {
                 let home = PathBuf::from(&home_path);
@@ -36,13 +36,15 @@ lazy_static! {
                     home
                 } else {
                     panic!(
-                        "$Env:WHKD_CONFIG_HOME is set to '{home_path}', which is not a valid directory",
+                        "$Env:WHKD_CONFIG_HOME is set to '{home_path}', which is not a valid directory"
                     );
                 }
-            },
+            }
         );
         home.push("whkdrc");
-        Whkdrc::load(&home).unwrap_or_else(|_| panic!("could not load whkdrc from {home:?}"))
+        Whkdrc::load(&home).unwrap_or_else(|e|
+            panic!("could not load whkdrc from {home:?} ({e:?})")
+        )
     };
     static ref SESSION_STDIN: Mutex<Option<ChildStdin>> = Mutex::new(None);
 }
@@ -59,18 +61,22 @@ impl HkmData {
     pub fn register(&self, hkm: &mut HotkeyManager<()>, shell: Shell) -> Result<()> {
         let cmd = self.command.clone();
 
-        if let Err(error) = hkm.register(self.vkey, self.mod_keys.as_slice(), move || {
-            if let Some(session_stdin) = SESSION_STDIN.lock().as_mut() {
-                if matches!(shell, Shell::Pwsh | Shell::Powershell) {
-                    println!("{cmd}");
-                }
+        if
+            let Err(error) = hkm.register(self.vkey, self.mod_keys.as_slice(), move || {
+                if let Some(session_stdin) = SESSION_STDIN.lock().as_mut() {
+                    if matches!(shell, Shell::Pwsh | Shell::Powershell) {
+                        println!("{cmd}");
+                    }
 
-                writeln!(session_stdin, "{cmd}").expect("failed to execute command");
-            }
-        }) {
+                    writeln!(session_stdin, "{cmd}").expect("failed to execute command");
+                }
+            })
+        {
             eprintln!(
                 "Unable to bind '{:?} + {}' to '{}' (error: {error}), ignoring this binding and continuing...",
-                self.mod_keys, self.vkey, self.command
+                self.mod_keys,
+                self.vkey,
+                self.command
             );
         }
 
@@ -113,9 +119,10 @@ fn main() -> Result<()> {
     let whkdrc = cli.config.map_or_else(
         || WHKDRC.clone(),
         |config| {
-            Whkdrc::load(&config)
-                .unwrap_or_else(|_| panic!("could not load whkdrc from {config:?}"))
-        },
+            Whkdrc::load(&config).unwrap_or_else(|_|
+                panic!("could not load whkdrc from {config:?}")
+            )
+        }
     );
 
     let shell_binary = whkdrc.shell.to_string();
@@ -127,8 +134,7 @@ fn main() -> Result<()> {
                 .args(["-Command", "-"])
                 .spawn()?;
 
-            let mut stdin = process
-                .stdin
+            let mut stdin = process.stdin
                 .take()
                 .ok_or_else(|| eyre!("could not take stdin from powershell session"))?;
 
@@ -143,12 +149,26 @@ fn main() -> Result<()> {
                 .args(["-"])
                 .spawn()?;
 
-            let mut stdin = process
-                .stdin
+            let mut stdin = process.stdin
                 .take()
                 .ok_or_else(|| eyre!("could not take stdin from cmd session"))?;
 
             writeln!(stdin, "prompt $S")?;
+
+            let mut session_stdin = SESSION_STDIN.lock();
+            *session_stdin = Option::from(stdin);
+        }
+        Shell::Nushell => {
+            let mut process = Command::new(&shell_binary)
+                .stdin(Stdio::piped())
+                .args(["--stdin", "-n"])
+                .spawn()?;
+
+            let stdin = process.stdin
+                .take()
+                .ok_or_else(|| eyre!("could not take stdin from nushell session"))?;
+
+            // writeln!(stdin, "$wshell = New-Object -ComObject wscript.shell")?;
 
             let mut session_stdin = SESSION_STDIN.lock();
             *session_stdin = Option::from(stdin);
@@ -162,10 +182,7 @@ fn main() -> Result<()> {
     for (keys, app_bindings) in &whkdrc.app_bindings {
         for binding in app_bindings {
             let data = HkmData::try_from(binding)?;
-            mapped
-                .entry(keys.join("+"))
-                .or_insert_with(Vec::new)
-                .push(data);
+            mapped.entry(keys.join("+")).or_insert_with(Vec::new).push(data);
         }
     }
 
@@ -182,12 +199,18 @@ fn main() -> Result<()> {
                         match active_win_pos_rs::get_active_window() {
                             Ok(window) => {
                                 if window.app_name == *proc {
-                                    if matches!(whkdrc.shell, Shell::Pwsh | Shell::Powershell) {
+                                    if
+                                        matches!(
+                                            whkdrc.shell,
+                                            Shell::Pwsh | Shell::Nushell | Shell::Powershell
+                                        )
+                                    {
                                         println!("{cmd}");
                                     }
 
-                                    writeln!(session_stdin, "{cmd}")
-                                        .expect("failed to execute command");
+                                    writeln!(session_stdin, "{cmd}").expect(
+                                        "failed to execute command"
+                                    );
                                 }
                             }
                             Err(error) => {

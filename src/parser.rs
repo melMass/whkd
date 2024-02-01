@@ -18,7 +18,7 @@ pub fn parser() -> impl Parser<char, Whkdrc, Error = Simple<char>> {
 
     let shell = just(".shell")
         .padded()
-        .ignore_then(choice((just("pwsh"), just("powershell"), just("cmd"))))
+        .ignore_then(choice((just("pwsh"), just("nu"), just("powershell"), just("cmd"))))
         .repeated()
         .exactly(1)
         .collect::<String>()
@@ -37,7 +37,8 @@ pub fn parser() -> impl Parser<char, Whkdrc, Error = Simple<char>> {
         .map(|c| c.0)
         .collect::<String>();
 
-    let process_name = text::ident()
+    let process_name = text
+        ::ident()
         .padded()
         .repeated()
         .at_least(1)
@@ -79,7 +80,7 @@ pub fn parser() -> impl Parser<char, Whkdrc, Error = Simple<char>> {
                 .padded()
                 .padded_by(comment.repeated())
                 .repeated()
-                .at_least(0),
+                .at_least(0)
         )
         .then(
             binding
@@ -91,7 +92,7 @@ pub fn parser() -> impl Parser<char, Whkdrc, Error = Simple<char>> {
                 .padded()
                 .padded_by(comment.repeated())
                 .repeated()
-                .at_least(1),
+                .at_least(1)
         )
         .map(|((shell, app_bindings), bindings)| Whkdrc {
             shell,
@@ -127,7 +128,8 @@ alt + h : echo "Hello""#;
 
     #[test]
     fn test_parse() {
-        let src = r#"
+        let src =
+            r#"
 .shell cmd
 
 # Specify different behaviour depending on the app
@@ -169,7 +171,7 @@ alt + 1 : komorebic focus-workspace 0 # digits are fine in the hotkeys section
                         keys: vec![String::from("alt"), String::from("n")],
                         command: String::from(r#"echo "hello chrome""#),
                         process_name: Option::from("Google Chrome".to_string()),
-                    },
+                    }
                 ],
             )],
             bindings: vec![
@@ -197,7 +199,7 @@ alt + 1 : komorebic focus-workspace 0 # digits are fine in the hotkeys section
                     keys: vec![String::from("alt"), String::from("1")],
                     command: String::from("komorebic focus-workspace 0"),
                     process_name: None,
-                },
+                }
             ],
         };
 
